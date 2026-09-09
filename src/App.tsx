@@ -269,14 +269,14 @@ Hence Option A is correct.`;
       return;
     }
 
-    // 1. Mandatory login check: Users must login so their activity is registered & saved
+    // Users must be logged in so their audit history can be saved.
     if (!user) {
       setError("Auditing ke liye pehle Login karein. Aapka audit data aapke account me save hoga.");
       setIsAuthModalOpen(true);
       return;
     }
 
-    // 2. Mandatory or user-provided Gemini API key check
+    // A Gemini key is required for running an audit.
     const activeKey = customApiKey || process.env.GEMINI_API_KEY;
     if (!activeKey) {
       setError("Apna Google Gemini API key set karein audits run karne ke liye.");
@@ -291,37 +291,59 @@ Hence Option A is correct.`;
 
     try {
       const allResults: AuditResult[] = [];
+
       for (let i = 0; i < pastedItems.length; i++) {
         setCurrentAuditIndex(i + 1);
         const item = pastedItems[i];
-        let auditResult: AuditResult;
-        
-        if (item.type === 'image') {
-          auditResult = await auditSingleQuantContent(item.content, customApiKey || undefined, selectedModel);
-        } else {
-          auditResult = await auditSingleTextContent(item.content, customApiKey || undefined, selectedModel);
-        }
-        
-        allResults.push(auditResult);
 
-        // Store each audit log in Firestore for admin oversight and user history
-        if (user) {
-          try {
-            await logAuditEntry({
-              user,
-              inputType: item.type,
-              rawSnippet: item.type === 'text' ? item.content : 'Image Question & Solution',
-              result: auditResult
-            });
-          } catch (logErr) {
-            console.warn("Failed to write to audit log:", logErr);
-          }
+        let auditResult: AuditResult;
+        if (item.type === 'image') {
+          auditResult = await auditSingleQuantContent(
+            item.content,
+            customApiKey || undefined,
+            selectedModel
+          );
+        } else {
+          auditResult = await auditSingleTextContent(
+            item.content,
+            customApiKey || undefined,
+            selectedModel
+          );
         }
+
+        allResults.push(auditResult);
       }
+
+      // IMPORTANT: Show the Gemini results immediately.
+      // Firestore history logging must never block the result screen.
       setResults(allResults);
+      setIsAnalyzing(false);
+      setCurrentAuditIndex(0);
+
+      // Save history in the background. Even if Firestore is slow or unavailable,
+      // the user can still see the completed audit result immediately.
+      pastedItems.forEach((item, index) => {
+        const auditResult = allResults[index];
+        if (!auditResult || !user) return;
+
+        void logAuditEntry({
+          user,
+          inputType: item.type,
+          rawSnippet: item.type === 'text' ? item.content : 'Image Question & Solution',
+          result: auditResult
+        }).catch((logErr) => {
+          console.warn("Failed to write to audit log:", logErr);
+        });
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
+      console.error("Audit failed:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred while auditing the content."
+      );
     } finally {
+      // This also covers failures. Do not leave the processing screen stuck.
       setIsAnalyzing(false);
       setCurrentAuditIndex(0);
     }
