@@ -1,0 +1,6 @@
+{
+  "name": "Remix Quadit - Manoj Yadav",
+  "description": "AI-powered auditor for banking exam quantitative aptitude questions and solutions with user authentication, custom API keys, and audit logging.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
